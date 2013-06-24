@@ -1,0 +1,72 @@
+### OS
+
+## Windows
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+## OSX
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Thumbnails
+._*
+
+## Linux
+.*
+!.gitignore
+*~
+
+### Perl
+blib/
+.build/
+_build/
+cover_db/
+inc/
+Build
+!Build/
+Build.bat
+.last_cover_stats
+Makefile
+Makefile.old
+MANIFEST.bak
+META.yml
+MYMETA.yml
+nytprof.out
+nytprof
+pm_to_blib
+
+
+### Editors
+
+## Eclipse cruft
+.project
+.metadata
+tmp/**
+tmp/**/*
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+
+# External tool builders
+.externalToolBuilders/
+
+# Locally stored "Eclipse launch configurations"
+*.launch
+
+## VIM
+.*.s[a-w][a-z]
+*.un~
+Session.vim
+.netrwhist
+*~
