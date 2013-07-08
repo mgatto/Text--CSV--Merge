@@ -3,20 +3,21 @@ use IO::File;
 use Getopt::Long;
 use Text::CSV_XS;
 use DBI;
+use Data::Dumper;
 use Log::Dispatch;
 use autodie;
 use utf8;
 
 
 # Setup CSV parser
-my $csv = Text::CSV_XS->new({ binary => 1, eol => $/ }) or
+my $csv = Text::CSV_XS->new({ binary => 1, eol => $/ }) or 
     die "Cannot use CSV: " . Text::CSV->error_diag();
 
 # Add logging
 my $log = Log::Dispatch->new(
     outputs => [
         [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>' ],
-        [ 'Screen', min_level => 'warning', newline => 1 ],
+        [ 'Screen', min_level => 'info', newline => 1 ],
     ],
 );
 
@@ -24,13 +25,21 @@ my $log = Log::Dispatch->new(
 # Validate Options
 my $base_file;
 my $merge_file;
-my $output_file = 'merged.csv';
+my $output_file = 'merge.csv';
+my $first_row_is_headers;
+my @columns;
+
 GetOptions(
     "base=s"   => \$base_file,  # string
     "new=s"    => \$merge_file, # string
-    "output=s" => \$output_file # string
+    "output=s" => \$output_file, # string
+    "columns=s"  => \@columns, # list
+    "first-row-is-headers" => \$first_row_is_headers, # flag
 ) or die("Error in command line arguments\r\n");
 
+# set column names for the hash; we'll use @columns more, later.
+@columns = split(/,/, join(',', @columns));
+$csv->column_names( @columns );
 
 # Read base file as readonly, not read-write: no trashing of the original!
 my $base_fh = IO::File->new( $base_file, '<' ) or die "$base_file: $!";
@@ -38,29 +47,26 @@ my $base_fh = IO::File->new( $base_file, '<' ) or die "$base_file: $!";
 # Open new file for output
 my $output_fh = IO::File->new( $output_file, '>' ) or die "$output_file: $!";
 
-# set column names for the hash; we'll use @columns more, later.
-my @columns =  qw/ Email Name Gender Ethnicity State Country Institution
-Department Position ResearchArea /;
-$csv->column_names( @columns );
-
 
 ### Merge rows!
 my @rows;
 
 # create reusable DBI connection to the CSV to be merged in to $base_file
-my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
-        RaiseError => 1,
-        PrintError => 1,
-        f_ext => ".csv/r",
-        csv_class => "Text::CSV_XS",
-        FetchHashKeyName => "NAME_lc",
-    })
+my $dbh = DBI->connect("dbi:CSV:", undef, undef, { 
+        RaiseError => 1, 
+        PrintError => 1, 
+        f_ext => ".csv/r", 
+        csv_class => "Text::CSV_XS", 
+        # csv_null => 1, 
+        FetchHashKeyName => "NAME_uc", 
+    }) 
     or die "Cannot connect: $DBI::errstr";
 
+$log->info("DBI Conncted to CSV");
 
 while ( my $row = $csv->getline_hr( $base_fh ) ) {
     # skip column names
-    next if ($. == 1);
+    next if ($. == 1 and $first_row_is_headers);
 
     if ( $csv->parse($row) ) {
 
@@ -70,40 +76,44 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
         # might be slightly more efficient by using while()
         foreach my $key ( keys %{$row} ) {
             # which fields is this row missing?
-            if ( $row->{$key} eq 'NULL' ) {
+            if ( $row->{$key} eq 'NULL' or $row->{$key} eq "") {
                 push @nulls, $key;
+                $log->info("Missing data: " . $key);
             }
         }
 
         # make a hash of arrays
         if ( @nulls  ) {
             # search $to_merge_fh for the missing data's row
-            my $sth = $dbh->prepare("select * from $merge_file where Email = ?")
+            my $sth = $dbh->prepare("select * from $merge_file where EMAIL = ?") 
                 or die "Cannot prepare: " . $dbh->errstr ();
-
-            $sth->execute($row->{'Email'});
-
+            
+            $sth->execute($row->{'EMAIL'});
+            
             while ( my $filler = $sth->fetchrow_hashref() ) {
                 # log if data found
+                print Dumper($filler);
+                
                 foreach my $item ( @nulls ) {
-                    # why are the $filler keys all lowercased??
-                    $item = lc $item;
-
-                    if ( exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne '' ) {
+                    if ( exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne "" ) {
                         # Log it for future use...
-                        $log->info("Found Data: '$item' = '$filler->{$item}' for '$row->{'Email'}'");
+                        $log->info("Found Data: '$item' = '$filler->{$item}' for '$row->{'EMAIL'}'");
 
                         # insert found data back into row hash!
-                        $row->{ucfirst($item)} = $filler->{$item};
+                        # @TODO uc/ucfirst... need to be used here to get the
+                        # data's column name back into the exact same case in
+                        # the original file
+                        $row->{$item} = $filler->{$item};
+                        # $row->{uc($item)} = $filler->{$item};
                     } else {
-                        # say "Missing Data: '$item' for '$row->{'Email'}' not found in $merge_file";
+                        # say "Missing Data: '$item' for '$row->{'EMAIL'}' not found in $merge_file";
                     }
                 }
-            }
-
+            }        
+            
             $sth->finish();
         }
-
+        
         push @rows, $row;
 
     } else {
@@ -118,10 +128,11 @@ $csv->eof or $csv->error_diag();
 #  [ @$_{@columns} ]) for @rows;
 # Or, here I've converted to Text::CSV_XS's specific print_hr(), which oddly
 # is simply missing from the PP (Pure Perl) version.
-$csv->print_hr($output_fh, $_ ) for @rows;
+$csv->print_hr($output_fh, $_) for @rows;
 
 
 # clean up!
 $base_fh->close();
 $output_fh->close() or die "output.csv: $!";
 
+exit 0;
