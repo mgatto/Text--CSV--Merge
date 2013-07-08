@@ -16,7 +16,7 @@ my $csv = Text::CSV_XS->new({ binary => 1, eol => $/ }) or
 # Add logging
 my $log = Log::Dispatch->new(
     outputs => [
-        [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>' ],
+        [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>>' ],
         [ 'Screen', min_level => 'info', newline => 1 ],
     ],
 );
@@ -91,20 +91,19 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
             $sth->execute($row->{'EMAIL'});
             
             while ( my $filler = $sth->fetchrow_hashref() ) {
-                # log if data found
-                print Dumper($filler);
+                # print Dumper($filler);
                 
                 foreach my $item ( @nulls ) {
                     if ( exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne "" ) {
-                        # Log it for future use...
+                        # log if data found
                         $log->info("Found Data: '$item' = '$filler->{$item}' for '$row->{'EMAIL'}'");
 
                         # insert found data back into row hash!
                         # @TODO uc/ucfirst... need to be used here to get the
                         # data's column name back into the exact same case in
                         # the original file
-                        $row->{$item} = $filler->{$item};
                         # $row->{uc($item)} = $filler->{$item};
+                        $row->{$item} = $filler->{$item};
                     } else {
                         # say "Missing Data: '$item' for '$row->{'EMAIL'}' not found in $merge_file";
                     }
