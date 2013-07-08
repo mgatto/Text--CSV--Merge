@@ -43,10 +43,12 @@ $csv->column_names( @columns );
 
 # Read base file as readonly, not read-write: no trashing of the original!
 my $base_fh = IO::File->new( $base_file, '<' ) or die "$base_file: $!";
+$base_fh->binmode(":utf8");
+
 
 # Open new file for output
 my $output_fh = IO::File->new( $output_file, '>' ) or die "$output_file: $!";
-
+$output_fh->binmode(":utf8");
 
 ### Merge rows!
 my @rows;
