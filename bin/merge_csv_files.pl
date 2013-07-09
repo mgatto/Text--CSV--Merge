@@ -43,10 +43,15 @@ GetOptions(
 @columns = split(/,/, join(',', @columns));
 $csv->column_names( @columns );
 
+# validate that search_field is one of the columns
+unless ($search_field ~~ @columns) {
+    die "Search parameter: '$search_field' is not one of the columns: @columns";
+}
+
+
 # Read base file as readonly, not read-write: no trashing of the original!
 my $base_fh = IO::File->new( $base_file, '<' ) or die "$base_file: $!";
 $base_fh->binmode(":utf8");
-
 
 # Open new file for output
 my $output_fh = IO::File->new( $output_file, '>' ) or die "$output_file: $!";
@@ -112,7 +117,7 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
                         # $row->{uc($item)} = $filler->{$item};
                         $row->{$item} = $filler->{$item};
                     } else {
-                        $log->info( "Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file";
+                        $log->info("Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file");
                     }
                 }
             }        
