@@ -26,14 +26,16 @@ my $log = Log::Dispatch->new(
 my $base_file;
 my $merge_file;
 my $output_file = 'merge.csv';
+my $search_field;
 my $first_row_is_headers;
 my @columns;
 
 GetOptions(
-    "base=s"   => \$base_file,  # string
-    "new=s"    => \$merge_file, # string
-    "output=s" => \$output_file, # string
-    "columns=s"  => \@columns, # list
+    "base=s"    => \$base_file,  # string
+    "new=s"     => \$merge_file, # string
+    "output=s"  => \$output_file, # string
+    "columns=s" => \@columns, # list
+    "search=s"  => \$search_field, # string
     "first-row-is-headers" => \$first_row_is_headers, # flag
 ) or die("Error in command line arguments\r\n");
 
@@ -80,17 +82,18 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
             # which fields is this row missing?
             if ( $row->{$key} eq 'NULL' or $row->{$key} eq "") {
                 push @nulls, $key;
-                $log->info("Missing data: " . $key);
+                $log->info("Missing data: $key for '$row->{$search_field}'");
             }
         }
 
         # make a hash of arrays
         if ( @nulls  ) {
             # search $to_merge_fh for the missing data's row
-            my $sth = $dbh->prepare("select * from $merge_file where EMAIL = ?") 
+            my $sth = $dbh->prepare("select * from $merge_file where
+                $search_field = ?") 
                 or die "Cannot prepare: " . $dbh->errstr ();
             
-            $sth->execute($row->{'EMAIL'});
+            $sth->execute($row->{$search_field});
             
             while ( my $filler = $sth->fetchrow_hashref() ) {
                 # print Dumper($filler);
@@ -98,7 +101,9 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
                 foreach my $item ( @nulls ) {
                     if ( exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne "" ) {
                         # log if data found
-                        $log->info("Found Data: '$item' = '$filler->{$item}' for '$row->{'EMAIL'}'");
+                        $log->info(
+                            "Found Data: '$item' = '$filler->{$item}' for '$row->{$search_field}'"
+                        );
 
                         # insert found data back into row hash!
                         # @TODO uc/ucfirst... need to be used here to get the
@@ -107,7 +112,7 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
                         # $row->{uc($item)} = $filler->{$item};
                         $row->{$item} = $filler->{$item};
                     } else {
-                        # say "Missing Data: '$item' for '$row->{'EMAIL'}' not found in $merge_file";
+                        $log->info( "Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file";
                     }
                 }
             }        
