@@ -2,18 +2,18 @@ use Modern::Perl '2012';
 use IO::File;
 use Getopt::Long;
 use Text::CSV_XS;
-use DBI;
-use Data::Dumper;
+use DBI; # for DBD::CSV
 use Log::Dispatch;
 use autodie;
 use utf8;
 
 
-# Setup CSV parser
+## Setup CSV parser
 my $csv = Text::CSV_XS->new({ binary => 1, eol => $/ }) or 
     die "Cannot use CSV: " . Text::CSV->error_diag();
 
-# Add logging
+    
+## Add logging
 my $log = Log::Dispatch->new(
     outputs => [
         [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>>' ],
@@ -22,7 +22,7 @@ my $log = Log::Dispatch->new(
 );
 
 
-# Validate Options
+## Setup Options
 my $base_file;
 my $merge_file;
 my $output_file = 'merge.csv';
@@ -39,6 +39,7 @@ GetOptions(
     "first-row-is-headers" => \$first_row_is_headers, # flag
 ) or die("Error in command line arguments\r\n");
 
+
 # set column names for the hash; we'll use @columns more, later.
 @columns = split(/,/, join(',', @columns));
 $csv->column_names( @columns );
@@ -49,6 +50,8 @@ unless ($search_field ~~ @columns) {
 }
 
 
+## Open filehandles
+#
 # Read base file as readonly, not read-write: no trashing of the original!
 my $base_fh = IO::File->new( $base_file, '<' ) or die "$base_file: $!";
 $base_fh->binmode(":utf8");
@@ -57,7 +60,7 @@ $base_fh->binmode(":utf8");
 my $output_fh = IO::File->new( $output_file, '>' ) or die "$output_file: $!";
 $output_fh->binmode(":utf8");
 
-### Merge rows!
+## Merge rows!
 my @rows;
 
 # create reusable DBI connection to the CSV to be merged in to $base_file
@@ -65,6 +68,7 @@ my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
         RaiseError => 1, 
         PrintError => 1, 
         f_ext => ".csv/r", 
+        # Better performance with XS
         csv_class => "Text::CSV_XS", 
         # csv_null => 1, 
         FetchHashKeyName => "NAME_uc", 
@@ -73,20 +77,21 @@ my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
 
 $log->info("DBI Conncted to CSV");
 
+# Loop through the base file to find missing data
 while ( my $row = $csv->getline_hr( $base_fh ) ) {
     # skip column names
     next if ($. == 1 and $first_row_is_headers);
 
     if ( $csv->parse($row) ) {
-
-        # keep a list of null field names
+        # keep a list of null column in this row
         my @nulls;
 
-        # might be slightly more efficient by using while()
+        # might be slightly more efficient to use while()
         foreach my $key ( keys %{$row} ) {
             # which fields is this row missing?
-            if ( $row->{$key} eq 'NULL' or $row->{$key} eq "") {
+            if ( $row->{$key} eq 'NULL' or $row->{$key} eq "" ) {
                 push @nulls, $key;
+
                 $log->info("Missing data: $key for '$row->{$search_field}'");
             }
         }
@@ -94,56 +99,62 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
         # make a hash of arrays
         if ( @nulls  ) {
             # search $to_merge_fh for the missing data's row
-            my $sth = $dbh->prepare("select * from $merge_file where
-                $search_field = ?") 
-                or die "Cannot prepare: " . $dbh->errstr ();
+            my $sth = $dbh->prepare(
+                "select * from $merge_file where $search_field = ?"
+            ) or die "Cannot prepare: " . $dbh->errstr ();
             
             $sth->execute($row->{$search_field});
             
             while ( my $filler = $sth->fetchrow_hashref() ) {
-                # print Dumper($filler);
-                
                 foreach my $item ( @nulls ) {
-                    if ( exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne "" ) {
-                        # log if data found
+                    if (exists $filler->{$item} and defined $filler->{$item} and $filler->{$item} ne "") {
                         $log->info(
                             "Found Data: '$item' = '$filler->{$item}' for '$row->{$search_field}'"
                         );
 
                         # insert found data back into row hash!
-                        # @TODO uc/ucfirst... need to be used here to get the
-                        # data's column name back into the exact same case in
-                        # the original file
-                        # $row->{uc($item)} = $filler->{$item};
+                        # @TODO decide on a normalization scheme to fit all
+                        # use cases, instad of just assuming UC
                         $row->{$item} = $filler->{$item};
                     } else {
-                        $log->info("Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file");
+                        $log->info(
+                            "Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file"
+                        );
                     }
                 }
             }        
             
+            # Be efficient and neat!
             $sth->finish();
         }
         
+        # insert the updated row as a reference; even if not processed, the 
+        # row will still appear in the final output.
         push @rows, $row;
 
     } else {
         my $err = $csv->error_input;
+
         $log->error("Failed to parse line: $err");
     }
 }
+
 # Ensure we've processed to the end of the file
 $csv->eof or $csv->error_diag();
 
 # print does NOT want an actual array! Use a hash slice, instead:
-#  [ @$_{@columns} ]) for @rows;
-# Or, here I've converted to Text::CSV_XS's specific print_hr(), which oddly
+#$csv->print($output_fh, [ @$_{@columns} ]) for @rows;
+#
+# Or, here I've switched to Text::CSV_XS's specific print_hr(), which oddly
 # is simply missing from the PP (Pure Perl) version.
 $csv->print_hr($output_fh, $_) for @rows;
 
 
-# clean up!
+## Clean up!
 $base_fh->close();
 $output_fh->close() or die "output.csv: $!";
 
+# Ensure clean exit, since some shells don't save the command in history
+# without it.
 exit 0;
+
