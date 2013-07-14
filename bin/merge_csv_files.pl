@@ -71,7 +71,7 @@ my $dbh = DBI->connect("dbi:CSV:", undef, undef, {
         # Better performance with XS
         csv_class => "Text::CSV_XS", 
         # csv_null => 1, 
-        FetchHashKeyName => "NAME_uc", 
+        # FetchHashKeyName => "NAME_uc", 
     }) 
     or die "Cannot connect: $DBI::errstr";
 
@@ -99,10 +99,17 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
         # make a hash of arrays
         if ( @nulls  ) {
             # search $to_merge_fh for the missing data's row
+            #
+            # To get the original case for the columns, specify the column
+            # names rather than using SELECT *, since it normalizes to
+            # lowercase, per:
+            # http://stackoverflow.com/questions/3350775/dbdcsv-returns-header-in-lower-case
+            $" = ','; # reset the list separator for array interpolation to suit SQL
+
             my $sth = $dbh->prepare(
-                "select * from $merge_file where $search_field = ?"
+                "select @columns from $merge_file where $search_field = ?"
             ) or die "Cannot prepare: " . $dbh->errstr ();
-            
+
             $sth->execute($row->{$search_field});
             
             while ( my $filler = $sth->fetchrow_hashref() ) {
@@ -112,13 +119,10 @@ while ( my $row = $csv->getline_hr( $base_fh ) ) {
                             "Found Data: '$item' = '$filler->{$item}' for '$row->{$search_field}'"
                         );
 
-                        # insert found data back into row hash!
-                        # @TODO decide on a normalization scheme to fit all
-                        # use cases, instad of just assuming UC
                         $row->{$item} = $filler->{$item};
                     } else {
                         $log->info(
-                            "Missing Data: '$item' for '$row->{$search_field}' not found in $merge_file"
+                            "Data not Found: '$item' for '$row->{$search_field}' $merge_file"
                         );
                     }
                 }
@@ -145,7 +149,7 @@ $csv->eof or $csv->error_diag();
 # print does NOT want an actual array! Use a hash slice, instead:
 #$csv->print($output_fh, [ @$_{@columns} ]) for @rows;
 #
-# Or, here I've switched to Text::CSV_XS's specific print_hr(), which oddly
+# Or, here I've switched to Text::CSV_XS's specific print_hr(), which 
 # is simply missing from the PP (Pure Perl) version.
 $csv->print_hr($output_fh, $_) for @rows;
 
