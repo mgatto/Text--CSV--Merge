@@ -1,0 +1,294 @@
+package Text::CSV::Merge;
+# ABSTRACT: Merge two CSV files
+
+use Modern::Perl '2010';
+use Moo 1.001000;
+use IO::File;
+use Text::CSV_XS;
+use DBI; # for DBD::CSV
+use Log::Dispatch;
+use autodie;
+use utf8;
+
+=head1 SYNOPSIS
+
+    my $merger = Text::CSV::Merge->new({
+        base    => 'into.csv',
+        merge   => 'from.csv',
+        output  => 'output.csv',  # optional
+        columns => [q/email name age/],
+        search  => 'email',
+        first_row_is_headers => 1  # optional
+    });
+
+    $merger->merge();
+
+=head1 DESCRIPTION
+
+The use case for this module is when one has two CSV files of largely the same structure. Yet, the 'from.csv' has data which 'into.csv' lacks. 
+
+In this initial release, Text::CSV::Merge only fills in empty cells; it does not overwrite data in 'into.csv' which also exists in 'from.csv'. 
+
+=head2 Subclassing
+Text::CSV::Merge may be subclassed. In the subclass, the following attributes may be overridden:
+
+=for :list
+* C<csv_parser>
+* C<dbh>
+* C<logger>
+
+=cut
+
+=attr logger
+The logger for all operations in this module.
+
+The logger records data gaps in the base CSV file, and records which data from the merge CSV file was used fill the gaps in the base CSV file.
+=cut
+has +logger => (
+    is => 'lazy',
+    builder => sub {
+        Log::Dispatch->new(
+            outputs => [
+                [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>>' ],
+                #[ 'Screen', min_level => 'info', newline => 1 ],
+            ],
+        );        
+    }
+);
+
+=attr csv_parser
+The CSV parser used internally is an immutable class property. 
+
+The internal CSV parser is the XS version of Text::CSV: Text::CSV_XS. You may use Text::CSV::PP if you wish, but using any other parser which does not duplicate Text::CSV's API will probably not work without modifying the source of this module.
+
+Text::CSV_XS is also used, hard-coded, as the parser for DBD::CSV. This is configurable, however, and may be made configurable by the end-user in a future release. It can be overridden in a subclass. 
+=cut
+has +csv_parser => (
+    is => 'lazy',
+    builder => sub {
+        Text::CSV_XS->new({ binary => 1, eol => $/ })
+            or die "Cannot use CSV: " . Text::CSV_XS->error_diag();
+    }
+);
+
+=attr dbh
+Create reusable DBI connection to the CSV data to be merged in to base file. 
+
+This method is overridable in a subclass. A good use of this would be to merge data into an existing CSV file from a database, or XML file. It must conform to the DBI's API, however.
+
+DBD::CSV is a base requirement for this module.
+=cut
+has +dbh => (
+    is => 'lazy',
+    # must return only a code ref
+    builder => sub {    
+        DBI->connect("dbi:CSV:", undef, undef, { 
+            RaiseError => 1, 
+            PrintError => 1, 
+            f_ext => ".csv/r", 
+            # Better performance with XS
+            csv_class => "Text::CSV_XS", 
+            # csv_null => 1, 
+        }) or die "Cannot connect: $DBI::errstr";
+    }
+);
+
+=attr base_file
+The CSV file into which new data will be merged.
+
+The base file is readonly, not read-write. This prevents accidental trashing of the original data.
+=cut
+has base_file => (
+    is => 'rw',
+    required => 1,
+    #allow external names to be different from class attribute
+    init_arg => 'base',
+    #validate it
+    #isa => sub {},
+    coerce => sub {
+        my $base_fh = IO::File->new( $_[0], '<' ) or die "$_[0]: $!";
+        $base_fh->binmode(":utf8");
+        
+        return $base_fh;
+    }
+);
+
+=attr merge_file
+The CSV file used to find data to merge into C<base_file>.
+=cut
+has merge_file => (
+    # We use only the raw file name/path and do not create a FH here, unlike base_file().
+    is => 'rw',
+    init_arg => 'merge',
+    required => 1
+);
+
+=attr output_file
+The output file into which the merge results are written. 
+
+I felt it imperative not to alter the original data files. I may make this a configurable option in the future, but wold likely set its default to 'false'.
+=cut
+has output_file => (
+    is => 'rw',
+    init_arg => 'output',
+    # an output file name is NOT required
+    required => 0,
+    default => 'merged_output.csv',
+    coerce => sub {
+        my $output_fh = IO::File->new( $_[0], '>' ) or die "$_[0]: $!";
+        $output_fh->binmode(":utf8");
+        
+        return $output_fh;
+    }
+);
+
+=attr columns
+The columns to be merged.
+
+A column to be merged must exist in both C<base_file> and C<merge_file>. Other than that requirement, each file may have other columns which do not exist in the other.
+=cut
+has columns=> (
+    is => 'rw',
+    required => 1,
+);    
+
+=attr search_field
+The column/field to match rows in C<merge_file>. 
+
+This column must exist in both files and be identially cased.
+=cut
+has search_field => (
+    is => 'rw',
+    required => 1,
+    init_arg => 'search'
+);
+
+=attr first_row_is_headers
+1 if the CSV files' first row are its headers; 0 if not. 
+
+If there are no headers, then the column names supplied by the C<columns> argument/property are applied to the columns in each file virtually, in numerical orders as they were passed in the list.
+=cut
+has first_row_is_headers => (
+    is => 'rw',
+    required => 1,
+    #validate it
+    isa => sub {
+        # @TODO: there's got to be a better way to do this!
+        die "Must be 1 or 0" unless $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0;
+    },
+);
+
+#=method BUILD
+#Constructor. 
+#=cut
+#sub BUILD {
+#    my $self = shift;
+#}
+
+=method merge()
+Main method and is public.
+
+C<merge()> performs the actual merge of the two CSV files.
+=cut
+sub merge {
+    my $self = shift;
+    
+    $self->csv_parser->column_names( $self->columns );
+        
+    # Loop through the base file to find missing data
+    #@TODO: make into $self->rows?
+    my @rows;
+    
+    while ( my $row = $self->csv_parser->getline_hr( $self->base_file ) ) {
+        # skip column names
+        next if ($. == 1 and $self->first_row_is_headers);
+
+        if ( $self->csv_parser->parse($row) ) {
+            # keep a list of null columns in this row
+            my @nulls;
+
+            # might be slightly more efficient to use while()
+            foreach my $key ( keys %{$row} ) {
+                # which fields is this row missing?
+                if ( $row->{$key} eq 'NULL' or $row->{$key} eq "" ) {
+                    push @nulls, $key;
+
+                    $self->logger->info("Missing data in column: $key for '$row->{$self->search_field}'");
+                }
+            }
+
+            # make a hash of arrays
+            if ( @nulls  ) {
+                # search $merge_file for the missing data's row
+                $" = ','; # reset the list separator for array interpolation to suit SQL
+                
+                # To get the original case for the columns, specify the column
+                # names rather than using SELECT *, since it normalizes to
+                # lowercase, per:
+                # http://stackoverflow.com/questions/3350775/dbdcsv-returns-header-in-lower-case
+                my $sth = $self->dbh->prepare(
+                    "select @{$self->columns} from $self->{merge_file} where $self->{search_field} = ?"
+                ) or die "Cannot prepare: " . $self->dbh->errstr ();
+
+                $sth->execute($row->{$self->search_field});
+                
+                while ( my $filler = $sth->fetchrow_hashref() ) {
+                    foreach my $gap ( @nulls ) {
+                        if (exists $filler->{$gap} and defined $filler->{$gap} and $filler->{$gap} ne "") {
+                            $self->logger->info(
+                                "Found Data: '$gap' = '$filler->{$gap}' for '$row->{$self->search_field}'"
+                            );
+                            
+                            $row->{$gap} = $filler->{$gap};
+                        } else {
+                            $self->logger->info(
+                                "Data not Found for column: '$gap' for '$row->{$self->search_field}' $self->{merge_file}"
+                            );
+                        }
+                    }
+                }        
+                
+                # Be efficient and neat!
+                $sth->finish();
+            }
+            
+            # insert the updated row as a reference; even if not processed, the 
+            # row will still appear in the final output.
+            push @rows, $row;
+        } else {
+            my $err = $self->csv_parser->error_input;
+            $self->logger->error("Failed to parse line: $err");
+        }
+    }
+
+    # Ensure we've processed to the end of the file
+    $self->csv_parser->eof or $self->csv_parser->error_diag();
+
+    # print does NOT want an actual array! Use a hash slice, instead:
+    #$self->csv_parser->print($output_fh, [ @$_{@columns} ]) for @rows;
+    #
+    # Or, here I've switched to Text::CSV_XS's specific print_hr(), which 
+    # is simply missing from the PP (Pure Perl) version.
+    $self->csv_parser->print_hr($self->output_file, $_) for @rows;
+};
+
+=method DEMOLISH()
+This method locally overrides a Moo built-in. 
+
+It close out all file handles, which will only occur after a call to C<merge()>.
+=cut
+sub DEMOLISH {
+    my $self = shift;
+
+    ## Clean up!
+    $self->base_file->close();
+    $self->output_file->close() or die "output.csv: $!";
+}
+
+=head1 SEE ALSO
+
+=for :list
+* L<Text::CSV_XS>
+=cut
+
+1;
