@@ -8,14 +8,6 @@ use Log::Dispatch;
 use lib '../lib';
 use Text::CSV::Merge;
 
-## Add logging
-my $log = Log::Dispatch->new(
-    outputs => [
-        [ 'File', autoflush => 1, min_level => 'debug', filename => 'merge.log', newline => 1, mode => '>>' ],
-        [ 'Screen', min_level => 'info', newline => 1 ],
-    ],
-);
-
 ## Setup Options
 my $base_file;
 my $merge_file;
