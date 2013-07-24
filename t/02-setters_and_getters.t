@@ -1,9 +1,6 @@
 #!perl -T
 
-use Test::More tests => 14;
-# @TODO: delete for production...
-use local::lib;
-use lib 'lib';
+use Test::More tests => 2;
 
 BEGIN {
     use_ok( 'Text::CSV::Merge' ) || print "Bail out!\n";
@@ -37,5 +34,5 @@ diag( "Testing getters and setters: i.e. read/write possibilities." );
 
 
 my $expected = "";
-my $computed = 
+my $computed = "";
 ok($computed, $expected);
