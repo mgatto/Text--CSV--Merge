@@ -8,9 +8,9 @@ BEGIN {
 
 # create an object
 my $merge = Text::CSV::Merge->new({
-    base    => 'merge_into.csv',
-    merge   => 'merge_from.csv',
-    output  => 'output.csv',
+    base    => 't/merge_into.csv',
+    merge   => 't/merge_from.csv',
+    output  => 't/output.csv',
     columns => [q/EMAIL FNAME LNAME LOCATION JAN FEB MAR APR MAY JUN/],
     search  => 'EMAIL',
     first_row_is_headers => 1
