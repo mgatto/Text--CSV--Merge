@@ -10,7 +10,7 @@ BEGIN {
 my $merge = Text::CSV::Merge->new({
     base    => 't/merge_into.csv',
     merge   => 't/merge_from.csv',
-    output  => 't/output.csv',
+    output  => 't/merge.csv',
     columns => [q/EMAIL FNAME LNAME LOCATION JAN FEB MAR APR MAY JUN/],
     search  => 'EMAIL',
     first_row_is_headers => 1
