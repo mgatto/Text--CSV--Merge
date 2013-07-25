@@ -4,9 +4,6 @@
 
 use Modern::Perl;
 use Getopt::Long;
-use Log::Dispatch;
-#delete for release!
-use lib '../lib';
 use Text::CSV::Merge;
 
 ## Setup Options
@@ -29,11 +26,6 @@ GetOptions(
 # set column names for the hash; we'll use @columns more, later.
 @columns = split(/,/, join(',', @columns));
 
-# validate that search_field is one of the columns
-unless ($search_field ~~ @columns) {
-    die "Search parameter: '$search_field' is not one of the columns: @columns";
-}
-
 ## Merge rows!
 my $merger = Text::CSV::Merge->new({
     base    => $base_file,
@@ -45,8 +37,6 @@ my $merger = Text::CSV::Merge->new({
 });
 
 $merger->merge();
-
-# $log->info("DBI Conncted to CSV");
 
 # Ensure clean exit, since some shells don't save the command in history
 # without it.

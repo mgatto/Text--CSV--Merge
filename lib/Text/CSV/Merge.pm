@@ -155,12 +155,17 @@ has columns=> (
 =attr search_field
 The column/field to match rows in C<merge_file>. 
 
-This column must exist in both files and be identially cased.
+This column must exist in both files and be identically cased.
 =cut
 has search_field => (
     is => 'rw',
     required => 1,
-    init_arg => 'search'
+    init_arg => 'search'#,
+    #isa => sub {
+        # validate that search_field is one of the columns in the base file
+        #die "Search parameter: '$_[0]' is not one of the columns: @{$self->columns}";
+        #    unless ( $_[0] ~~ @{$self->columns} );
+    #}
 );
 
 =attr first_row_is_headers
@@ -174,7 +179,7 @@ has first_row_is_headers => (
     #validate it
     isa => sub {
         # @TODO: there's got to be a better way to do this!
-        die "Must be 1 or 0" unless $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0;
+        die "Must be 1 or 0" unless ( $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0 );
     },
 );
 
@@ -192,6 +197,10 @@ C<merge()> performs the actual merge of the two CSV files.
 =cut
 sub merge {
     my $self = shift;
+    
+    # validate that search_field is one of the columns in the base file
+    die "Search parameter: '$self->search_field' is not one of the columns: @{$self->columns}"
+        unless ( $self->search_field ~~ @{$self->columns} );
     
     $self->csv_parser->column_names( $self->columns );
         
