@@ -1,9 +1,6 @@
 #!perl -T
 
-use Test::More tests => 14;
-# @TODO: delete for production...
-use local::lib;
-use lib 'lib';
+use Test::More tests => 1;
 
 BEGIN {
     use_ok( 'Text::CSV::Merge' ) || print "Bail out!\n";
@@ -32,10 +29,3 @@ diag( "Testing getters and setters: i.e. read/write possibilities." );
 
 # attempt to set search_field
 # attempt to get search_field
-
-
-
-
-my $expected = "";
-my $computed = 
-ok($computed, $expected);
