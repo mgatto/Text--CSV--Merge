@@ -1,5 +1,6 @@
 #! /usr/bin/env perl -w
 # PODNAME: merge_csv_files.pl
+# ABSTRACT: Command line client to Text::CSV::Merge
 
 use Modern::Perl;
 use Getopt::Long;
