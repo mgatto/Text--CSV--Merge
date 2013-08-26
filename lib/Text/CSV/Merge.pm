@@ -1,5 +1,5 @@
 package Text::CSV::Merge;
-# ABSTRACT: Merge two CSV files
+# ABSTRACT: Fill in gaps in a CSV file from another CSV file
 
 use Modern::Perl '2010';
 use Moo 1.001000;
@@ -22,6 +22,9 @@ use utf8;
     });
 
     $merger->merge();
+    
+    ## Now, there is a new CSV file named 'merged_output.csv' by default, 
+    #  in the same directory as the code which called C<$merger->merge();>.
 
 =head1 DESCRIPTION
 
@@ -40,7 +43,7 @@ Text::CSV::Merge may be subclassed. In the subclass, the following attributes ma
 
 =cut
 
-=attr logger
+=attr C<logger>
 
 The logger for all operations in this module.
 
@@ -58,7 +61,7 @@ has +logger => (
     }
 );
 
-=attr csv_parser
+=attr C<csv_parser>
 
 The CSV parser used internally is an immutable class property. 
 
@@ -74,7 +77,7 @@ has +csv_parser => (
     }
 );
 
-=attr dbh
+=attr C<dbh>
 
 Create reusable DBI connection to the CSV data to be merged in to base file. 
 
@@ -97,7 +100,7 @@ has +dbh => (
     }
 );
 
-=attr base_file
+=attr C<base_file>
 
 The CSV file into which new data will be merged.
 
@@ -118,7 +121,7 @@ has base_file => (
     }
 );
 
-=attr merge_file
+=attr C<merge_file>
 
 The CSV file used to find data to merge into C<base_file>.
 =cut
@@ -129,7 +132,7 @@ has merge_file => (
     required => 1
 );
 
-=attr output_file
+=attr C<output_file>
 
 The output file into which the merge results are written. 
 
@@ -149,7 +152,7 @@ has output_file => (
     }
 );
 
-=attr columns
+=attr C<columns>
 
 The columns to be merged.
 
@@ -160,7 +163,7 @@ has columns=> (
     required => 1,
 );    
 
-=attr search_field
+=attr C<search_field>
 
 The column/field to match rows in C<merge_file>. 
 
@@ -177,7 +180,7 @@ has search_field => (
     #}
 );
 
-=attr first_row_is_headers
+=attr C<first_row_is_headers>
 
 1 if the CSV files' first row are its headers; 0 if not. 
 
@@ -200,7 +203,7 @@ has first_row_is_headers => (
 #    my $self = shift;
 #}
 
-=method merge()
+=method C<merge()>
 
 Main method and is public.
 
@@ -292,7 +295,7 @@ sub merge {
     $self->csv_parser->print_hr($self->output_file, $_) for @rows;
 };
 
-=method DEMOLISH()
+=method C<DEMOLISH()>
 
 This method locally overrides a Moo built-in. 
 
