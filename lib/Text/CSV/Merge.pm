@@ -1,5 +1,5 @@
 package Text::CSV::Merge;
-# ABSTRACT: Merge two CSV files
+# ABSTRACT: Fill in gaps in a CSV file from another CSV file
 
 use Modern::Perl '2010';
 use Moo 1.001000;
@@ -22,6 +22,9 @@ use utf8;
     });
 
     $merger->merge();
+    
+    ## Now, there is a new CSV file named 'merged_output.csv' by default, 
+    #  in the same directory as the code which called C<$merger->merge();>.
 
 =head1 DESCRIPTION
 
@@ -30,6 +33,7 @@ The use case for this module is when one has two CSV files of largely the same s
 In this initial release, Text::CSV::Merge only fills in empty cells; it does not overwrite data in 'into.csv' which also exists in 'from.csv'. 
 
 =head2 Subclassing
+
 Text::CSV::Merge may be subclassed. In the subclass, the following attributes may be overridden:
 
 =for :list
@@ -39,7 +43,8 @@ Text::CSV::Merge may be subclassed. In the subclass, the following attributes ma
 
 =cut
 
-=attr logger
+=attr C<logger>
+
 The logger for all operations in this module.
 
 The logger records data gaps in the base CSV file, and records which data from the merge CSV file was used fill the gaps in the base CSV file.
@@ -56,7 +61,8 @@ has +logger => (
     }
 );
 
-=attr csv_parser
+=attr C<csv_parser>
+
 The CSV parser used internally is an immutable class property. 
 
 The internal CSV parser is the XS version of Text::CSV: Text::CSV_XS. You may use Text::CSV::PP if you wish, but using any other parser which does not duplicate Text::CSV's API will probably not work without modifying the source of this module.
@@ -71,7 +77,8 @@ has +csv_parser => (
     }
 );
 
-=attr dbh
+=attr C<dbh>
+
 Create reusable DBI connection to the CSV data to be merged in to base file. 
 
 This method is overridable in a subclass. A good use of this would be to merge data into an existing CSV file from a database, or XML file. It must conform to the DBI's API, however.
@@ -93,7 +100,8 @@ has +dbh => (
     }
 );
 
-=attr base_file
+=attr C<base_file>
+
 The CSV file into which new data will be merged.
 
 The base file is readonly, not read-write. This prevents accidental trashing of the original data.
@@ -113,7 +121,8 @@ has base_file => (
     }
 );
 
-=attr merge_file
+=attr C<merge_file>
+
 The CSV file used to find data to merge into C<base_file>.
 =cut
 has merge_file => (
@@ -123,7 +132,8 @@ has merge_file => (
     required => 1
 );
 
-=attr output_file
+=attr C<output_file>
+
 The output file into which the merge results are written. 
 
 I felt it imperative not to alter the original data files. I may make this a configurable option in the future, but wold likely set its default to 'false'.
@@ -142,7 +152,8 @@ has output_file => (
     }
 );
 
-=attr columns
+=attr C<columns>
+
 The columns to be merged.
 
 A column to be merged must exist in both C<base_file> and C<merge_file>. Other than that requirement, each file may have other columns which do not exist in the other.
@@ -152,18 +163,25 @@ has columns=> (
     required => 1,
 );    
 
-=attr search_field
+=attr C<search_field>
+
 The column/field to match rows in C<merge_file>. 
 
-This column must exist in both files and be identially cased.
+This column must exist in both files and be identically cased.
 =cut
 has search_field => (
     is => 'rw',
     required => 1,
-    init_arg => 'search'
+    init_arg => 'search'#,
+    #isa => sub {
+        # validate that search_field is one of the columns in the base file
+        #die "Search parameter: '$_[0]' is not one of the columns: @{$self->columns}";
+        #    unless ( $_[0] ~~ @{$self->columns} );
+    #}
 );
 
-=attr first_row_is_headers
+=attr C<first_row_is_headers>
+
 1 if the CSV files' first row are its headers; 0 if not. 
 
 If there are no headers, then the column names supplied by the C<columns> argument/property are applied to the columns in each file virtually, in numerical orders as they were passed in the list.
@@ -174,7 +192,7 @@ has first_row_is_headers => (
     #validate it
     isa => sub {
         # @TODO: there's got to be a better way to do this!
-        die "Must be 1 or 0" unless $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0;
+        die "Must be 1 or 0" unless ( $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0 );
     },
 );
 
@@ -185,13 +203,18 @@ has first_row_is_headers => (
 #    my $self = shift;
 #}
 
-=method merge()
+=method C<merge()>
+
 Main method and is public.
 
 C<merge()> performs the actual merge of the two CSV files.
 =cut
 sub merge {
     my $self = shift;
+    
+    # validate that search_field is one of the columns in the base file
+    die "Search parameter: '$self->search_field' is not one of the columns: @{$self->columns}"
+        unless ( $self->search_field ~~ @{$self->columns} );
     
     $self->csv_parser->column_names( $self->columns );
         
@@ -272,7 +295,8 @@ sub merge {
     $self->csv_parser->print_hr($self->output_file, $_) for @rows;
 };
 
-=method DEMOLISH()
+=method C<DEMOLISH()>
+
 This method locally overrides a Moo built-in. 
 
 It close out all file handles, which will only occur after a call to C<merge()>.
