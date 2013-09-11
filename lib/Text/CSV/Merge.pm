@@ -211,9 +211,10 @@ C<merge()> performs the actual merge of the two CSV files.
 =cut
 sub merge {
     my $self = shift;
+
     # validate that search_field is one of the columns in the base file
     die "Search parameter: '$self->search_field' is not one of the columns: @{$self->columns}"
-        unless ( scalar(grep { $_ eq $self->search_field} @{$self->columns}) );
+        unless ( scalar(grep { $_ eq $self->search_field } @{$self->columns}) );
         # Use scalar() to force grep to return the number of matches; 
         # 0 -> false for the 'unless' statement.
     
