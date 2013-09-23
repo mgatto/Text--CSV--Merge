@@ -2,13 +2,14 @@ package Text::CSV::Merge;
 # ABSTRACT: Fill in gaps in a CSV file from another CSV file
 
 use Modern::Perl '2010';
+use autodie;
+use utf8;
+
 use Moo 1.001000;
 use IO::File;
 use Text::CSV_XS;
 use DBI; # for DBD::CSV
 use Log::Dispatch;
-use autodie;
-use utf8;
 
 =head1 SYNOPSIS
 
@@ -196,13 +197,6 @@ has first_row_is_headers => (
     },
 );
 
-#=method BUILD
-#Constructor. 
-#=cut
-#sub BUILD {
-#    my $self = shift;
-#}
-
 =method C<merge()>
 
 Main method and is public.
@@ -295,6 +289,8 @@ sub merge {
     # Or, here I've switched to Text::CSV_XS's specific print_hr(), which 
     # is simply missing from the PP (Pure Perl) version.
     $self->csv_parser->print_hr($self->output_file, $_) for @rows;
+    
+    return 1;
 };
 
 =method C<DEMOLISH()>
@@ -309,6 +305,8 @@ sub DEMOLISH {
     ## Clean up!
     $self->base_file->close();
     $self->output_file->close() or die "output.csv: $!";
+    
+    return 1;
 }
 
 =head1 SEE ALSO
