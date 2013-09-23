@@ -239,7 +239,7 @@ sub merge {
             # make a hash of arrays
             if ( @nulls  ) {
                 # search $merge_file for the missing data's row
-                $" = ','; # reset the list separator for array interpolation to suit SQL
+                local $" = ','; # reset the list separator for array interpolation to suit SQL
                 
                 # To get the original case for the columns, specify the column
                 # names rather than using SELECT *, since it normalizes to
