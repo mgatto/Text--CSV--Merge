@@ -173,7 +173,8 @@ This column must exist in both files and be identically cased.
 has search_field => (
     is => 'rw',
     required => 1,
-    init_arg => 'search'#,
+    init_arg => 'search'
+    #,
     #isa => sub {
         # validate that search_field is one of the columns in the base file
         #die "Search parameter: '$_[0]' is not one of the columns: @{$self->columns}";
@@ -193,7 +194,7 @@ has first_row_is_headers => (
     #validate it
     isa => sub {
         # @TODO: there's got to be a better way to do this!
-        die "Must be 1 or 0" unless ( $_[0] =~ /'1'|'0'/ || $_[0] == 1 || $_[0] == 0 );
+        die "Must be 1 or 0" unless ( $_[0] =~ m{'1'|'0'}x || $_[0] == 1 || $_[0] == 0 );
     },
 );
 
@@ -306,7 +307,7 @@ sub DEMOLISH {
     $self->base_file->close();
     $self->output_file->close() or die "output.csv: $!";
     
-    return 1;
+    return;
 }
 
 =head1 SEE ALSO
