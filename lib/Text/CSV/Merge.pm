@@ -6,6 +6,7 @@ use autodie;
 use utf8;
 
 use Moo 1.001000;
+use Carp;
 use IO::File;
 use Text::CSV_XS;
 use DBI; # for DBD::CSV
@@ -74,7 +75,7 @@ has +csv_parser => (
     is => 'lazy',
     builder => sub {
         Text::CSV_XS->new({ binary => 1, eol => $/ })
-            or die "Cannot use CSV: " . Text::CSV_XS->error_diag();
+            or croak("Cannot use module Text::CSV_XS: " . Text::CSV_XS->error_diag());
     }
 );
 
@@ -97,7 +98,7 @@ has +dbh => (
             # Better performance with XS
             csv_class => "Text::CSV_XS", 
             # csv_null => 1, 
-        }) or die "Cannot connect: $DBI::errstr";
+        }) or croak("Cannot connect to CSV file via DBI: $DBI::errstr");
     }
 );
 
@@ -115,7 +116,7 @@ has base_file => (
     #validate it
     #isa => sub {},
     coerce => sub {
-        my $base_fh = IO::File->new( $_[0], '<' ) or die "$_[0]: $!";
+        my $base_fh = IO::File->new( $_[0], '<' ) or croak("Open file: '$_[0]' failed: $!");
         $base_fh->binmode(":utf8");
         
         return $base_fh;
@@ -146,7 +147,7 @@ has output_file => (
     required => 0,
     default => 'merged_output.csv',
     coerce => sub {
-        my $output_fh = IO::File->new( $_[0], '>' ) or die "$_[0]: $!";
+        my $output_fh = IO::File->new( $_[0], '>' ) or croak("Open file: '$_[0]' failed: $!");
         $output_fh->binmode(":utf8");
         
         return $output_fh;
@@ -194,7 +195,7 @@ has first_row_is_headers => (
     #validate it
     isa => sub {
         # @TODO: there's got to be a better way to do this!
-        die "Must be 1 or 0" unless ( $_[0] =~ m{'1'|'0'}x || $_[0] == 1 || $_[0] == 0 );
+        croak("Option 'first_row_is_headers' must be 1 or 0") unless ( $_[0] =~ m{'1'|'0'}x || $_[0] == 1 || $_[0] == 0 );
     },
 );
 
@@ -208,7 +209,7 @@ sub merge {
     my $self = shift;
 
     # validate that search_field is one of the columns in the base file
-    die "Search parameter: '$self->search_field' is not one of the columns: @{$self->columns}"
+    croak("Search parameter: '$self->search_field' is not one of the columns: @{$self->columns}")
         unless ( scalar(grep { $_ eq $self->search_field } @{$self->columns}) );
         # Use scalar() to force grep to return the number of matches; 
         # 0 -> false for the 'unless' statement.
@@ -248,7 +249,7 @@ sub merge {
                 # http://stackoverflow.com/questions/3350775/dbdcsv-returns-header-in-lower-case
                 my $sth = $self->dbh->prepare(
                     "select @{$self->columns} from $self->{merge_file} where $self->{search_field} = ?"
-                ) or die "Cannot prepare: " . $self->dbh->errstr ();
+                ) or croak("Cannot prepare DBI statement: " . $self->dbh->errstr ());
 
                 $sth->execute($row->{$self->search_field});
                 
@@ -305,7 +306,7 @@ sub DEMOLISH {
 
     ## Clean up!
     $self->base_file->close();
-    $self->output_file->close() or die "output.csv: $!";
+    $self->output_file->close() or croak("Close 'output.csv' failed: $!");
     
     return;
 }
