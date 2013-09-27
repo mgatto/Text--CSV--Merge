@@ -6,4 +6,4 @@ BEGIN {
     use_ok( 'Text::CSV::Merge' ) || print "Could not load Text::CSV::Merge!\n";
 }
 
-diag( "Text::CSV::Merge $Text::CSV::Merge, Perl $], $^X" );
+diag( "Text::CSV::Merge, Perl $^V, $^X" );
